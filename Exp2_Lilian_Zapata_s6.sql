@@ -1,0 +1,160 @@
+/* SUMATIVA 2 SEMANA 6
+LILIAN ZAPATA
+*/
+
+-- DESAFIO 1 Reportería de Clientes
+SELECT
+    UPPER(cli.pnombre || ' ' || cli.appaterno || ' ' || cli.apmaterno) AS "NOMBRE_COMPLETO", -- concatenacion de nombre con mayusculas
+    TO_CHAR(cli.numrun, '$999G999G999') || '-' || cli.dvrun AS "RUT_CLIENTE", -- concatenacion y formateo de rut
+    TO_CHAR(cli.fecha_inscripcion, 'Mon-YYYY') AS "FECHA_INSCRIPCION", -- formateo de la presentacion de los meses en que se inscribieron 
+    
+    CASE -- case para definir las zonas de los clientes segun las regiones
+        WHEN cli.cod_region IN (1, 2, 3, 4, 15) THEN 'ZONA NORTE'
+        WHEN cli.cod_region IN (5, 6, 7, 8, 13, 16) THEN 'ZONA CENTRO'
+        ELSE 'ZONA SUR' 
+    END AS "ZONA_CLIENTE",
+
+    tc.nombre_tipo_cliente AS "TIPO_CLIENTE",
+    COUNT(ttc.nro_transaccion) AS "TOTAL_TRANSACCIONES", -- conteo de las transacciones
+    tcli.nro_tarjeta AS "NUMERO_TARJETA",
+    TO_CHAR(tcli.cupo_compra, '$999G999G999') AS "CUPO_COMPRA", -- formateo del cupo de compra
+    TO_CHAR(tcli.cupo_disp_compra, '$999G999G999') AS "CUPO_DISPONIBLE" -- formateo del cupo disponible
+FROM
+    CLIENTE cli
+    JOIN -- union de la tabla tarejta_cliente con cliente mediante run
+        TARJETA_CLIENTE tcli ON cli.numrun = tcli.numrun
+    JOIN  -- umion tabla tipo_cliente con cliente mediante el cod_tipo_cliente
+        TIPO_CLIENTE tc ON cli.cod_tipo_cliente = tc.cod_tipo_cliente
+    JOIN --union de transaccion_tarjeta_cliente con tarjeta_cliente meduante el numero de tarjeta
+        TRANSACCION_TARJETA_CLIENTE ttc ON tcli.nro_tarjeta = ttc.nro_tarjeta
+
+GROUP BY
+    cli.pnombre, cli.appaterno, cli.apmaterno,
+    cli.numrun, cli.dvrun, cli.fecha_inscripcion,
+    cli.cod_region, tc.nombre_tipo_cliente,
+    tcli.nro_tarjeta, tcli.cupo_compra, tcli.cupo_disp_compra
+
+MINUS -- descontar los que tienen menos transacciones
+
+SELECT
+    INITCAP(cli.pnombre || ' ' || cli.appaterno || ' ' || cli.apmaterno),
+    TO_CHAR(cli.numrun, '$999G999G999') || '-' || cli.dvrun,
+    TO_CHAR(cli.fecha_inscripcion, 'Mon-YYYY'),
+    
+    CASE
+        WHEN cli.cod_region IN (1, 2, 3, 4, 15) THEN 'ZONA NORTE'
+        WHEN cli.cod_region IN (5, 6, 7, 8, 13, 16) THEN 'ZONA CENTRO'
+        ELSE 'ZONA SUR'
+    END,
+    
+    tc.nombre_tipo_cliente,
+    COUNT(ttc.nro_transaccion),
+    tcli.nro_tarjeta,
+    TO_CHAR(tcli.cupo_compra, '$999G999G999'),
+    TO_CHAR(tcli.cupo_disp_compra, '$999G999G999')
+
+FROM
+    CLIENTE cli
+    JOIN -- uniorn tabla tarjeta_cliente con cliente mediante run
+        TARJETA_CLIENTE tcli ON cli.numrun = tcli.numrun
+    JOIN -- uniorn tabla tipo_cliente con cliente mediante cod_tipo_cliente
+        TIPO_CLIENTE tc ON cli.cod_tipo_cliente = tc.cod_tipo_cliente
+    JOIN --union tabla transaccion_tarjeta_cliente con tarjeta_cliente mediantr el numero de tarjeta
+        TRANSACCION_TARJETA_CLIENTE ttc ON tcli.nro_tarjeta = ttc.nro_tarjeta
+
+GROUP BY -- agrupar segun las columnas
+    cli.pnombre, cli.appaterno, cli.apmaterno,
+    cli.numrun, cli.dvrun, cli.fecha_inscripcion,
+    cli.cod_region, tc.nombre_tipo_cliente,
+    tcli.nro_tarjeta, tcli.cupo_compra, tcli.cupo_disp_compra
+
+HAVING COUNT(ttc.nro_transaccion) <= 2 -- se descuentan los menores a 2 o = transacciones
+
+ORDER BY --ordenamiento de la informacion segun zona y total de transacciones
+    ZONA_CLIENTE ASC, TOTAL_TRANSACCIONES DESC;
+
+-------------------------------------------------------------------------------------------------
+
+-- DESAFIO 2  Resumen de Compra
+-- creacion de la tabla resumen de compra // se usa en plural por la solicitud del documento
+-- DROP TABLE RESUMEN_COMPRA_AVANCE_PUNTOS;
+
+CREATE TABLE RESUMEN_COMPRA_AVANCE_PUNTOS (
+    RUN_CLIENTE VARCHAR2(12), -- run completo con guion
+    NOMBRE_CLIENTE VARCHAR2(150),
+    MONTO_COMPRAS_AVANCES_S_AVANCES NUMBER(15),
+    CATEGORIZACION_CLIENTE VARCHAR2(20),
+    PUNTOS NUMBER(10)
+);
+
+-- insercion de los datos a la tabla
+INSERT INTO RESUMEN_COMPRA_AVANCE_PUNTOS (
+    RUN_CLIENTE,
+    NOMBRE_CLIENTE,
+    MONTO_COMPRAS_AVANCES_S_AVANCES,
+    CATEGORIZACION_CLIENTE,
+    PUNTOS
+)
+SELECT
+    TO_CHAR(cli.numrun) || '-' || cli.dvrun AS "RUN_CLIENTE", -- concatenacion de run
+    UPPER(TRIM(cli.pnombre || ' ' || NVL(cli.snombre, '') || ' ' || cli.appaterno || ' ' || NVL(cli.apmaterno, ''))) AS "NOMBRE_CLIENTE", -- concatenacion de nombre del cliente
+    NVL(SUM(ttc.monto_total_transaccion), 0) AS "MONTO_COMPRAS_AVANCES_S_AVANCES", -- no pude dar formato, me arrojaba error, para que me explique como hacerlo
+
+    CASE -- case de categorizacion de las tarjetas
+        WHEN NVL(SUM(ttc.monto_total_transaccion), 0) < 100000 THEN 'SIN CATEGORIA'
+        WHEN NVL(SUM(ttc.monto_total_transaccion), 0) < 1000000 THEN 'BRONCE'
+        WHEN NVL(SUM(ttc.monto_total_transaccion), 0) < 4000000 THEN 'PLATA'
+        WHEN NVL(SUM(ttc.monto_total_transaccion), 0) < 8000000 THEN 'SILVER'
+        WHEN NVL(SUM(ttc.monto_total_transaccion), 0) < 15000000 THEN 'GOLD'
+        ELSE 'PLATINUM'
+    END AS "CATEGORIZACION_CLIENTE",
+
+    0 AS "PUNTOS"
+
+FROM
+    CLIENTE cli
+    LEFT JOIN -- union de las tabla tarjeta_cliente (todos los resultados) con la tabla cliente, auqnue no coincidan
+        TARJETA_CLIENTE tcli ON cli.numrun = tcli.numrun
+    LEFT JOIN -- union de la tabla transaccion_cliente (todos los datos) con la tarjeta_cliente. auqneu no coincidan
+        TRANSACCION_TARJETA_CLIENTE ttc ON tcli.nro_tarjeta = ttc.nro_tarjeta
+
+GROUP BY-- agrupar segun las columnas
+    cli.numrun, cli.dvrun, cli.pnombre, cli.snombre, cli.appaterno, cli.apmaterno
+
+ORDER BY -- ordenar por apaterno
+    cli.appaterno;
+
+COMMIT; -- confirmacion de los cambios r4ealizados
+    
+----------------------------------------------------------------------------------------------------
+
+-- desafio 3
+--update de la tabla resumen_compra_avance_puntos
+
+UPDATE RESUMEN_COMPRA_AVANCE_PUNTOS r -- alias de la tabla
+SET r.PUNTOS = (
+    SELECT 
+        ROUND(NVL(SUM(ttc.monto_total_transaccion), 0) / 10000) * 250 -- redondeo del nuevo calculo de los puntos por cada $10.000
+    FROM CLIENTE cli
+    LEFT JOIN -- union de la tabla tarjeta_cliente (todos sus datos) con cliente, auqneu no coincidan
+        TARJETA_CLIENTE tcli ON cli.numrun = tcli.numrun
+    LEFT JOIN  -- union de la tabla transaccion_tarjeta_cliente (todos sus datos) con la tarjeta cliente
+        TRANSACCION_TARJETA_CLIENTE ttc ON tcli.nro_tarjeta = ttc.nro_tarjeta
+    WHERE TO_CHAR(cli.numrun) || '-' || cli.dvrun = r.RUN_CLIENTE -- concatenacion del run
+    GROUP BY cli.numrun, cli.dvrun
+)
+WHERE EXISTS ( -- actualizacion de la columna 1 (puntos)
+    SELECT 1
+    FROM CLIENTE cli -- alias de la tabla cliente
+    LEFT JOIN --union de la tabla tarjeta_cliente con cliente uniendo run con su tarjeta
+        TARJETA_CLIENTE tcli ON cli.numrun = tcli.numrun
+    LEFT JOIN --union transaccion_tarjeta_cliente (todas las transacciones) con la tabla tarjeta cliente, (numero tarjeta)
+        TRANSACCION_TARJETA_CLIENTE ttc ON tcli.nro_tarjeta = ttc.nro_tarjeta
+    WHERE TO_CHAR(cli.numrun) || '-' || cli.dvrun = r.RUN_CLIENTE -- comparacion del num de run de cliente con el run de la tabla actualizada "r"
+    GROUP BY cli.numrun, cli.dvrun
+    HAVING SUM(ttc.monto_total_transaccion) IS NOT NULL -- solo se muestra los que tienen datos
+);
+
+COMMIT;
+
+SELECT * FROM RESUMEN_COMPRA_AVANCE_PUNTOS ORDER BY run_cliente; -- select para mostrar la infromacion actualizada, ya que no me funciono actualizar la consulta
